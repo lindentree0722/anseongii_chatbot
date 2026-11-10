@@ -21,7 +21,7 @@ class FaqEntry(TypedDict):
 
 DATA_PATH = Path(__file__).resolve().parent / 'data' / 'faq.json'
 EXIT_COMMANDS = {'종료', '끝', 'exit', 'quit'}
-DEFAULT_MODEL = 'gpt-4.1-mini'
+DEFAULT_MODEL = 'gemini-3.1-flash-lite'
 MAX_QUESTION_LENGTH = 1500
 MAX_HISTORY_MESSAGES = 8  # 최근 4번의 질문·답변만 메모리에 보관한다.
 UNKNOWN_ANSWER = (
@@ -56,7 +56,7 @@ class AiUnavailable(Exception):
 
 
 class SchoolAssistant:
-    """전체 FAQ와 최근 대화를 Responses API에 전달한다."""
+    """전체 FAQ와 최근 대화를 Gemini Developer API에 전달한다."""
 
     def __init__(self, client, entries: list[FaqEntry], model: str):
         self.client = client
@@ -81,7 +81,8 @@ class SchoolAssistant:
         del self.history[:-MAX_HISTORY_MESSAGES]
 
     def ask(self, question: str) -> str:
-        from openai import APIConnectionError, APIError, APIStatusError
+        from google.genai import errors, types
+        import httpx2
 
         today = datetime.now(timezone(timedelta(hours=9))).date().isoformat()
         schema = {
@@ -95,44 +96,51 @@ class SchoolAssistant:
             'required': ['kind', 'answer', 'evidence_ids'],
             'additionalProperties': False,
         }
+        messages = self.history + [{'role': 'user', 'content': json.dumps(
+            {'today_kst': today, 'question': question}, ensure_ascii=False,
+        )}]
+        contents = []
+        for index, message in enumerate(messages):
+            parts = [types.Part.from_text(text=message['content'])]
+            if index == 0:
+                parts.insert(0, types.Part.from_text(text=self.context))
+            contents.append(types.Content(
+                role='model' if message['role'] == 'assistant' else 'user',
+                parts=parts,
+            ))
         try:
-            response = self.client.responses.create(
-                model=self.model,
-                instructions=AI_INSTRUCTIONS,
-                input=[
-                    {'role': 'user', 'content': self.context},
-                    *self.history,
-                    {'role': 'user', 'content': json.dumps(
-                        {'today_kst': today, 'question': question},
-                        ensure_ascii=False,
-                    )},
-                ],
-                text={'format': {
-                    'type': 'json_schema', 'name': 'school_answer',
-                    'strict': True, 'schema': schema,
-                }},
-                max_output_tokens=1200,
-                store=False,
+            response = self.client.models.generate_content(
+                model=self.model, contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=AI_INSTRUCTIONS,
+                    response_mime_type='application/json',
+                    response_json_schema=schema,
+                    max_output_tokens=4096,
+                ),
             )
-        except APIConnectionError:
-            raise AiUnavailable('AI 연결이 지연되거나 인터넷에 연결할 수 없어요.') from None
-        except APIStatusError as error:
-            if error.status_code == 401:
-                message = 'API 키 인증에 실패했어요. OPENAI_API_KEY를 확인해 주세요.'
-            elif error.status_code == 429:
-                message = 'API 사용 한도나 잔액을 확인한 뒤 잠시 후 다시 시도해 주세요.'
-            elif error.status_code in (400, 403, 404):
-                message = '모델 이름과 프로젝트의 API 사용 권한을 확인해 주세요.'
+        except errors.APIError as error:
+            if error.code in (400, 401, 403):
+                message = 'Gemini API 키와 사용 권한을 확인해 주세요. .env의 GEMINI_API_KEY를 사용합니다.'
+            elif error.code == 429:
+                message = 'Gemini API 호출 한도에 도달했어요. AI Studio 한도를 확인하고 잠시 후 다시 시도하세요.'
+            elif error.code == 404:
+                message = '이 프로젝트에서 사용할 수 있는 모델인지 GEMINI_MODEL을 확인해 주세요.'
             else:
                 message = 'AI 서비스에서 오류가 발생했어요. 잠시 후 다시 시도해 주세요.'
             raise AiUnavailable(message) from None
-        except APIError:
-            raise AiUnavailable('AI 응답을 받지 못했어요. 잠시 후 다시 시도해 주세요.') from None
+        except (httpx2.HTTPError, OSError):
+            raise AiUnavailable('AI 연결이 지연되거나 인터넷에 연결할 수 없어요.') from None
+        except ValueError:
+            raise AiUnavailable('AI 요청 설정 또는 응답 형식을 확인하지 못했어요.') from None
 
-        if response.status != 'completed' or not response.output_text:
+        if (not response.candidates
+                or response.candidates[0].finish_reason != types.FinishReason.STOP):
             raise AiUnavailable('AI 답변이 완성되지 않았어요.')
+        response_text = response.text
+        if not response_text:
+            raise AiUnavailable('AI가 답변을 반환하지 않았어요.')
         try:
-            result = json.loads(response.output_text)
+            result = json.loads(response_text)
             kind = result['kind']
             answer = result['answer']
             evidence = result['evidence_ids']
@@ -170,22 +178,29 @@ def create_assistant(entries: list[FaqEntry]) -> tuple[Optional[SchoolAssistant]
             load_dotenv(env_path, override=False, encoding='utf-8-sig', interpolate=False)
         except (OSError, UnicodeError):
             return None, '.env 파일을 읽을 수 없어요. 파일 경로와 UTF-8 인코딩을 확인해 주세요.'
-    api_key = os.environ.get('OPENAI_API_KEY', '').strip()
+    api_key = os.environ.get('GEMINI_API_KEY', '').strip()
     if not api_key or api_key == 'your_api_key_here':
-        return None, 'API 키가 없어요. .env.example을 .env로 복사하고 키를 입력해 주세요.'
+        return None, 'Gemini API 키가 없어요. .env의 GEMINI_API_KEY에 AI Studio 키를 입력해 주세요.'
     if not api_key.isascii() or any(char.isspace() or not char.isprintable()
                                   for char in api_key):
         return None, 'API 키 형식이 올바르지 않아요. 공백·줄바꿈 없이 실제 키를 입력하세요.'
     try:
-        from openai import OpenAI, OpenAIError
+        from google import genai
+        from google.genai import types
     except ImportError:
         return None, 'AI 패키지가 없어요. python -m pip install -r requirements.txt를 실행하세요.'
     try:
-        client = OpenAI(api_key=api_key, base_url='https://api.openai.com/v1',
-                        timeout=30.0, max_retries=0)
-    except (OpenAIError, ValueError, TypeError, ImportError):
+        client = genai.Client(
+            api_key=api_key, enterprise=False,
+            http_options=types.HttpOptions(
+                base_url='https://generativelanguage.googleapis.com',
+                api_version='v1beta', timeout=30000,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        )
+    except (ValueError, TypeError, ImportError, OSError):
         return None, 'AI 연결 설정을 읽을 수 없어요. 키·패키지·프록시 설정을 확인하세요.'
-    model = os.environ.get('OPENAI_MODEL', '').strip() or DEFAULT_MODEL
+    model = os.environ.get('GEMINI_MODEL', '').strip() or DEFAULT_MODEL
     return SchoolAssistant(client, entries, model), ''
 
 
@@ -258,7 +273,7 @@ def main(argv=None) -> None:
     assistant, notice = (None, '') if args.offline else create_assistant(entries)
     print('안성고등학교 신입생 안내 챗봇')
     if assistant:
-        print('AI 답변 모드입니다. 이어서 질문할 수 있어요.')
+        print('Gemini AI 답변 모드입니다. 이어서 질문할 수 있어요.')
     else:
         if notice:
             print(notice)
@@ -336,6 +351,9 @@ def main(argv=None) -> None:
             pending = results
             print('관련 안내가 여러 개 있어요. 원하는 질문을 골라 주세요.')
             show_candidates(pending)
+
+    if assistant:
+        assistant.client.close()
 
 
 if __name__ == '__main__':

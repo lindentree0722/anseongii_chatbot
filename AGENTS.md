@@ -2,7 +2,7 @@
 
 ## 프로젝트 목표
 
-신입생이 학교생활에 관해 질문하면 등록된 학교 자료를 바탕으로 안내하는 Python 챗봇을 만든다. 현재 OpenAI Responses API로 65개 FAQ를 참고해 답하는 터미널 버전이며, API를 사용할 수 없으면 로컬 FAQ 검색을 제공한다.
+신입생이 학교생활에 관해 질문하면 등록된 학교 자료를 바탕으로 안내하는 Python 챗봇을 만든다. 현재 Gemini Developer API로 65개 FAQ를 참고해 답하는 터미널 버전이며, API를 사용할 수 없으면 로컬 FAQ 검색을 제공한다.
 
 ## 안내 범위
 
@@ -27,14 +27,14 @@
 
 ## 프로젝트 구조
 
-초기 구현은 루트의 `chat.py`에서 진행한다. GPT 호출, 응답 검증, 최근 대화 관리와 FAQ 검색을 구현한다. 실행 명령은 `chat.py`를 기준으로 한다.
+초기 구현은 루트의 `chat.py`에서 진행한다. Gemini 호출, 응답 검증, 최근 대화 관리와 FAQ 검색을 구현한다. 실행 명령은 `chat.py`를 기준으로 한다.
 
 FAQ는 `data/faq.json`, 원자료 정리는 `data/`의 문서에 보관한다. 의존성은 `requirements.txt`, 설정 예시는 `.env.example`에 둔다. `.env`와 `.venv`는 버전 관리에서 제외한다. 사용자의 요청에 따라 테스트 파일은 현재 생성하지 않는다.
 
 ## 기본 기능과 자료구조
 
 ```text
-질문 입력 → 전체 FAQ와 최근 대화를 GPT에 전달 → 응답·근거 ID 검증 → 답변 출력
+질문 입력 → 전체 FAQ와 최근 대화를 Gemini에 전달 → 응답·근거 ID 검증 → 답변 출력
          └→ API 사용 불가 시 로컬 FAQ 검색 → 답변 또는 후보 선택
 ```
 
@@ -66,7 +66,7 @@ python -m py_compile chat.py
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-가상환경 사용 시 `.\.venv\Scripts\python.exe chat.py`로 실행한다. `--offline`은 API 없이 실행한다. 패키지는 `python -m pip install -r requirements.txt`로 설치한다. API 키는 환경 변수 또는 `.env`에서 읽고 출력하지 않는다. 기본 모델은 `gpt-4.1-mini`이며 `OPENAI_MODEL`로 변경한다. 최근 4번 대화만 메모리에 유지하고 `초기화`로 지운다. API 요청은 `store=False`를 사용한다. 현재 테스트 파일은 없으며 임시 검증으로 동작을 확인한다. 위 unittest discover 명령은 테스트 파일을 다시 도입할 때 사용한다.
+가상환경 사용 시 `.\.venv\Scripts\python.exe chat.py`로 실행한다. `--offline`은 API 없이 실행한다. 패키지는 `python -m pip install -r requirements.txt`로 설치한다. API 키는 환경 변수 또는 `.env`에서 읽고 출력하지 않는다. 기본 모델은 `gemini-3.1-flash-lite`이며 `GEMINI_MODEL`로 변경한다. 최근 4번 대화만 메모리에 유지하고 `초기화`로 지운다. API 키는 `GEMINI_API_KEY`를 사용한다. 대화 세션이나 파일을 서버에 생성하지 않으며 전송한 자료에는 Google의 데이터 처리 정책이 적용된다. 무료 한도 초과 시 유료 모델로 자동 전환하지 않는다. 현재 테스트 파일은 없으며 임시 검증으로 동작을 확인한다. 위 unittest discover 명령은 테스트 파일을 다시 도입할 때 사용한다.
 
 ## 코딩 규칙
 
