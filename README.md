@@ -1,6 +1,6 @@
 # 안성고등학교 신입생 AI 안내 챗봇
 
-등록된 학교 FAQ 65개를 바탕으로 Gemini가 한국어로 답하는 터미널 프로그램입니다.
+등록된 학교 FAQ 65개를 바탕으로 Gemini가 한국어로 답하는 Matplotlib 채팅 프로그램입니다.
 시설·일과·생활규정·2027학년도 입학전형을 안내하며, 최근 4번의 대화를 참고해 후속 질문을 처리합니다.
 
 ## 바로 실행하기 (Windows PowerShell)
@@ -9,7 +9,7 @@
 
 1. `.env.example`을 `.env`로 복사합니다. 기존 `.env`가 있으면 복사하지 않고 편집합니다.
 2. `.env`의 `GEMINI_API_KEY=your_api_key_here`에서 오른쪽을 실제 API 키로 바꿉니다. 키는 채팅이나 저장소에 공유하지 않습니다.
-3. 프로젝트 폴더에서 실행합니다.
+3. 프로젝트 폴더에서 실행하면 채팅 창이 열립니다.
 
 ```powershell
 .\.venv\Scripts\python.exe chat.py
@@ -19,7 +19,7 @@
 환경 변수 `GEMINI_API_KEY`가 이미 설정되어 있으면 `.env`보다 우선합니다.
 모델은 `.env`의 `GEMINI_MODEL`로 변경하며 기본값은 `gemini-3.1-flash-lite`입니다.
 
-새 컴퓨터에서는 먼저 다음 명령을 실행합니다. Python 3.10 이상을 사용하세요.
+새 컴퓨터에서는 먼저 다음 명령을 실행합니다. Python 3.11 이상과 Tkinter를 사용하세요. Windows 공식 Python에는 Tkinter가 포함됩니다.
 
 ```powershell
 python -m venv .venv
@@ -27,6 +27,23 @@ python -m venv .venv
 ```
 
 VS Code에서 실행 버튼을 사용하려면 Python 인터프리터로 `.venv\Scripts\python.exe`를 선택하세요.
+
+## Matplotlib 화면
+
+- 대화는 Matplotlib 캔버스의 말풍선으로 표시합니다. 한글 IME와 붙여넣기를 위해 입력창에는 Tkinter Text를 사용합니다.
+- 입력 후 전송 버튼 또는 Enter를 누릅니다. Shift+Enter는 줄바꿈입니다.
+- 상단의 추천 질문과 질문 목록 버튼으로 시작할 수 있습니다. 목록에서는 입력창에 번호를 넣어 선택합니다.
+- 마우스 휠 또는 오른쪽 스크롤바로 이전 대화를 확인합니다.
+- 대화 초기화 버튼은 화면과 AI의 최근 대화 기억을 지웁니다.
+- 답변 처리 중에는 중복 전송과 초기화를 잠시 막습니다. 창 이동·스크롤·닫기는 가능합니다.
+- Gemini 요청은 별도 작업 스레드에서 처리하고 Matplotlib/Tk 화면 갱신은 메인 스레드에서만 실행합니다.
+- 대화 화면은 최근 100개 메시지를 표시하며 파일에 저장하지 않습니다. AI에 보내는 대화는 기존처럼 최근 4턴입니다.
+
+터미널로 사용하려면 다음 명령을 실행하세요.
+
+```powershell
+.\.venv\Scripts\python.exe chat.py --cli
+```
 
 ## 사용 예시
 
@@ -81,7 +98,7 @@ FAQ 전체와 최근 대화도 입력 토큰 한도에 포함됩니다.
 무료 등급에서는 입력·출력이 Google 제품 개선에 사용될 수 있다는 안내가 있으므로 학생 개인정보를 입력하지 마세요.
 
 `requirements.txt`의 `google-genai`는 Gemini Developer API 호출에,
-`python-dotenv`는 `.env` 읽기에 사용합니다. 키나 원시 API 오류 메시지는 출력하지 않습니다.
+`python-dotenv`는 `.env` 읽기, `matplotlib`은 대화 화면에 사용합니다. 키나 원시 API 오류 메시지는 출력하지 않습니다.
 기존 OpenAI 키는 사용하지 않으며 `.env`의 `GEMINI_API_KEY`에 Google AI Studio 키를 넣어야 합니다.
 
 ## 자료와 검증
@@ -97,7 +114,9 @@ FAQ 전체와 최근 대화도 입력 토큰 한도에 포함됩니다.
 테스트 파일은 만들지 않고 임시 unittest와 모의 HTTP 응답으로 요청 형식,
 오류 처리, 대화 기억, FAQ 대체 동작 등 16개 검증을 통과했습니다. Gemini API 키가 아직 없어 실제 호출과 답변 품질은 확인하지 못했습니다.
 
-구문 검사: `.\.venv\Scripts\python.exe -m py_compile chat.py`
+UI 추가 검증에서는 대화 처리 테스트 4개와 실제 Tk/Matplotlib 구성에서 전송·중복 방지·목록·스크롤·선택·초기화·대기 중 종료를 확인했습니다. 한글 말풍선 렌더링도 확인했습니다. 실제 한글 IME 조합 입력은 사용자 환경에서 확인이 필요합니다.
+
+구문 검사: `.\.venv\Scripts\python.exe -m py_compile chat.py chat_ui.py`
 
 구현 참고: [Google Gen AI Python SDK](https://googleapis.github.io/python-genai/),
 [Gemini 구조화 응답](https://ai.google.dev/gemini-api/docs/structured-output).

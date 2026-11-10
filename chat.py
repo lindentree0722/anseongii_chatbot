@@ -260,7 +260,17 @@ def show_candidates(entries: list[FaqEntry]) -> None:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description='안성고등학교 신입생 안내 챗봇')
     parser.add_argument('--offline', action='store_true', help='API 없이 FAQ 검색만 사용')
+    parser.add_argument('--cli', action='store_true', help='창 대신 터미널에서 대화')
     args = parser.parse_args(argv)
+    if not args.cli:
+        try:
+            from chat_ui import run_ui
+        except ImportError:
+            print('UI 패키지가 없어요. python -m pip install -r requirements.txt를 실행하세요.')
+            print('터미널 실행: python chat.py --cli')
+            return
+        run_ui(offline=args.offline)
+        return
     try:
         entries = load_entries()
     except (OSError, ValueError) as error:
